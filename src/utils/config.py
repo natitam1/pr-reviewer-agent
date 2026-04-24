@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     max_files_to_review: int = Field(default=10, env="MAX_FILES_TO_REVIEW")
     max_diff_lines: int = Field(default=500, env="MAX_DIFF_LINES")
     
-    # API Settings
+    # api Settings
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
     api_port: int = Field(default=8000, env="API_PORT")
     
