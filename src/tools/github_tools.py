@@ -78,8 +78,8 @@ class GitHubTools:
 
 
 class GetPRDetailsTool(BaseTool):
-    name = "get_pr_details"
-    description = "Get details about a GitHub Pull Request including changed files and diffs"
+    name: str = "get_pr_details"
+    description: str = "Get details about a GitHub Pull Request including changed files and diffs"
     github_tools: GitHubTools = Field(exclude=True)
 
     def _run(self, repo_name: str, pr_number: int) -> str:
@@ -112,8 +112,8 @@ Changed Files:
 
 
 class PostReviewTool(BaseTool):
-    name = "post_review"
-    description = "Post a review comment on a GitHub Pull Request"
+    name: str = "post_review"
+    description: str = "Post a review comment on a GitHub Pull Request"
     github_tools: GitHubTools = Field(exclude=True)
 
     def _run(
