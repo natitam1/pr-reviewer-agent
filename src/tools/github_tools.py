@@ -8,18 +8,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class GitHubTools:
     def __init__(self, token: str):
         self.github = Github(token)
 
     def get_pr_details(self, repo_name: str, pr_number: int) -> Dict[str, Any]:
-        """Get comprehensive PR details including files and diffs."""
         try:
             repo = self.github.get_repo(repo_name)
             pr = repo.get_pull(pr_number)
 
-            # Get changed files
             files = []
             for file in pr.get_files():
                 if file.patch:
@@ -29,7 +26,7 @@ class GitHubTools:
                             "status": file.status,
                             "additions": file.additions,
                             "deletions": file.deletions,
-                            "patch": file.patch[:2000],  # Limit patch size
+                            "patch": file.patch[:2000],
                             "blob_url": file.blob_url,
                         }
                     )
@@ -60,7 +57,6 @@ class GitHubTools:
         comment: str,
         commit_sha: str,
     ) -> bool:
-        """Post a review comment on the PR."""
         try:
             repo = self.github.get_repo(repo_name)
             pr = repo.get_pull(pr_number)
@@ -76,14 +72,12 @@ class GitHubTools:
             logger.error(f"Error posting review comment: {e}")
             return False
 
-
 class GetPRDetailsTool(BaseTool):
     name: str = "get_pr_details"
     description: str = "Get details about a GitHub Pull Request including changed files and diffs"
     github_tools: GitHubTools = Field(exclude=True)
 
     def _run(self, repo_name: str, pr_number: int) -> str:
-        """Get PR details and return as formatted string."""
         details = self.github_tools.get_pr_details(repo_name, pr_number)
 
         formatted_output = f"""
@@ -102,14 +96,13 @@ Files Changed ({details['changed_files']}):
 Changed Files:
 """
 
-        for file in details["files"][:10]:  # Limit to first 10 files
+        for file in details["files"][:10]:
             formatted_output += f"\n📁 {file['filename']} ({file['status']})\n"
             formatted_output += f"   +{file['additions']} -{file['deletions']} lines\n"
             if file["patch"]:
                 formatted_output += f"   Diff preview:\n{file['patch'][:500]}...\n"
 
         return formatted_output
-
 
 class PostReviewTool(BaseTool):
     name: str = "post_review"
@@ -123,7 +116,6 @@ class PostReviewTool(BaseTool):
         comment: str,
         commit_sha: str,
     ) -> str:
-        """Post review comment and return success status."""
         success = self.github_tools.post_review_comment(
             repo_name, pr_number, comment, commit_sha
         )

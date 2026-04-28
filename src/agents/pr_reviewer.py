@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import SystemMessage, HumanMessage
@@ -14,16 +14,15 @@ logger = logging.getLogger(__name__)
 
 class PRReviewerAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            temperature=0.1  # Lower temperature for consistent reviews
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_model,
+            google_api_key=settings.google_api_key,
+            temperature=0.1
         )
         
         self.platform = settings.platform.lower()
         self.memory = ConversationBufferMemory(return_messages=True)
         
-        # Initialize platform-specific tools
         if self.platform == "gitlab":
             self.platform_tools = GitLabTools(settings.gitlab_token, settings.gitlab_url)
             self.github_tools = self.platform_tools
@@ -32,7 +31,7 @@ class PRReviewerAgent:
                 PostMRNoteTool(gitlab_tools=self.platform_tools)
             ]
             self.review_type = "Merge Request"
-        else:  # GitHub
+        else:
             self.platform_tools = GitHubTools(settings.github_token)
             self.github_tools = self.platform_tools
             self.tools = [
@@ -40,12 +39,9 @@ class PRReviewerAgent:
                 PostReviewTool(github_tools=self.platform_tools)   
             ]
             self.review_type = "Pull Request"        
-        # Create the agent
         self.agent = self._create_agent()
     
     def _create_agent(self) -> AgentExecutor:
-        """Create the PR/MR reviewer agent with specialized prompt."""
-        
         platform_name = "GitLab" if self.platform == "gitlab" else "GitHub"
         action_name = "Merge Request" if self.platform == "gitlab" else "Pull Request"
         
@@ -86,7 +82,7 @@ class PRReviewerAgent:
             ("placeholder", "{agent_scratchpad}")
         ])
         
-        agent = create_openai_tools_agent(
+        agent = create_tool_calling_agent(
             llm=self.llm,
             tools=self.tools,
             prompt=prompt
@@ -101,12 +97,10 @@ class PRReviewerAgent:
         )
     
     def review_pr(self, repo_or_project_id: str, pr_or_mr_number: int, commit_sha: str = None) -> Dict[str, Any]:
-        """Review a Pull Request or Merge Request and post feedback."""
         try:
             action_type = "MR" if self.platform == "gitlab" else "PR"
             logger.info(f"Starting review for {action_type} #{pr_or_mr_number} in {repo_or_project_id}")
             
-            # Prepare the review request
             if self.platform == "gitlab":
                 review_request = f"""
                 Please review Merge Request #{pr_or_mr_number} in project {repo_or_project_id}.
@@ -131,7 +125,6 @@ class PRReviewerAgent:
                 The commit SHA for posting the review is: {commit_sha}
                 """
             
-            # Execute the review
             result = self.agent.invoke({"input": review_request})
             
             logger.info(f"Review completed for {action_type} #{pr_or_mr_number}")
@@ -150,7 +143,6 @@ class PRReviewerAgent:
             }
 
     def analyze_pr_summary(self, repo_or_project_id: str, pr_or_mr_number: int) -> Dict[str, Any]:
-        """Get a quick analysis summary without posting a review."""
         try:
             if self.platform == "gitlab":
                 details = self.platform_tools.get_mr_details(repo_or_project_id, pr_or_mr_number)
@@ -161,7 +153,6 @@ class PRReviewerAgent:
                 files_changed = details.get('changed_files', 0)
                 title = details.get('title', 'Unknown')
                 
-            # Create a focused analysis prompt
             analysis_prompt = f"""
             Analyze this {self.review_type} briefly:
 

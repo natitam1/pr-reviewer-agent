@@ -8,21 +8,18 @@ import logging
 from .agents.pr_reviewer import PRReviewerAgent
 from .utils.config import settings
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="PR Reviewer Agent",
-    description="AI-powered Pull Request reviewer using LangChain and OpenAI",
+    description="AI-powered Pull Request reviewer using LangChain and Google Gemini",
     version="1.0.0"
 )
 
-# Initialize the PR reviewer agent
 pr_agent = PRReviewerAgent()
 
 def verify_webhook_signature(payload: bytes, signature: str, platform: str) -> bool:
-    """Unified webhook signature verification."""
     if not signature:
         return False
     
@@ -33,8 +30,13 @@ def verify_webhook_signature(payload: bytes, signature: str, platform: str) -> b
         expected = hmac.new(secret, payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(f"sha256={expected}", signature)
     
+def is_repo_allowed(repo_identifier: str) -> bool:
+    allowed = settings.allowed_repos
+    if not allowed:
+        return True
+    return repo_identifier in allowed
+
 async def process_review(identifier: str, number: int, commit_sha: str = None):
-    """Unified background task to process PR/MR review."""
     try:
         action_type = "MR" if pr_agent.platform == "gitlab" else "PR"
         logger.info(f"Processing {action_type} review for {identifier}#{number}")
@@ -49,10 +51,8 @@ async def process_review(identifier: str, number: int, commit_sha: str = None):
     except Exception as e:
         logger.error(f"Error in background {action_type} review: {e}")
 
-
 @app.post("/webhook/gitlab")
 async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
-    """Handle GitLab webhook events."""
     try:
         payload = await request.body()
         signature = request.headers.get("X-Gitlab-Token")
@@ -68,7 +68,12 @@ async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
             
             if action in ["open", "update"]:
                 mr_data = data["object_attributes"]
-                project_id = data["project"]["id"]
+                project_id = str(data["project"]["id"])
+                
+                if not is_repo_allowed(project_id):
+                    logger.info(f"Ignoring GitLab MR from unauthorized project: {project_id}")
+                    return JSONResponse({"status": "ignored", "message": f"Project {project_id} is not in ALLOWED_REPOS"})
+
                 mr_iid = mr_data["iid"]
                 commit_sha = mr_data["last_commit"]["id"]
                 
@@ -92,34 +97,32 @@ async def gitlab_webhook(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/webhook/github")
 async def github_webhook(request: Request, background_tasks: BackgroundTasks):
-    """Handle GitHub webhook events."""
     try:
-        # Get request data
         payload = await request.body()
         signature = request.headers.get("X-Hub-Signature-256")
         
-        # Verify signature
         if not verify_webhook_signature(payload, signature, "github"):
             raise HTTPException(status_code=403, detail="Invalid signature")
         
-        # Parse payload
         event_type = request.headers.get("X-GitHub-Event")
         data = json.loads(payload)
         
         logger.info(f"Received GitHub webhook: {event_type}")
         
-        # Handle pull request events
         if event_type == "pull_request":
             action = data.get("action")
             
-            # Trigger review on opened or updated PRs
             if action in ["opened", "synchronize"]:
                 pr_data = data["pull_request"]
                 repo_name = data["repository"]["full_name"]
+                
+                if not is_repo_allowed(repo_name):
+                    logger.info(f"Ignoring GitHub PR from unauthorized repo: {repo_name}")
+                    return JSONResponse({"status": "ignored", "message": f"Repo {repo_name} is not in ALLOWED_REPOS"})
+
                 pr_number = pr_data["number"]
                 commit_sha = pr_data["head"]["sha"]
                 
-                # Add review task to background queue
                 background_tasks.add_task(
                     process_review, 
                     repo_name, 
@@ -140,24 +143,23 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {"status": "healthy", "agent": "PR Reviewer Agent"}
 
 @app.post("/review/{owner}/{repo}/{pr_number}")
 async def manual_review(owner: str, repo: str, pr_number: int, background_tasks: BackgroundTasks):
-    """Manually trigger a PR review."""
     try:
         repo_name = f"{owner}/{repo}"
         
-        # Get the latest commit SHA
+        if not is_repo_allowed(repo_name):
+            raise HTTPException(status_code=403, detail=f"Repository {repo_name} is not in ALLOWED_REPOS")
+
         if pr_agent.platform == "gitlab":
             pr_details = pr_agent.platform_tools.get_mr_details(repo_name, pr_number)
-            commit_sha = pr_details.get("sha", "main")  # GitLab field name
+            commit_sha = pr_details.get("sha", "main")
         else:
             pr_details = pr_agent.platform_tools.get_pr_details(repo_name, pr_number)  
-            commit_sha = pr_details.get("sha", "main")  # GitHub field name
+            commit_sha = pr_details.get("sha", "main")
         
-        # Add review task to background queue
         background_tasks.add_task(process_review, repo_name, pr_number, commit_sha)
         
         return JSONResponse({
@@ -171,9 +173,12 @@ async def manual_review(owner: str, repo: str, pr_number: int, background_tasks:
 
 @app.get("/analyze/{owner}/{repo}/{pr_number}")
 async def analyze_pr(owner: str, repo: str, pr_number: int):
-    """Get PR analysis without posting a review."""
     try:
         repo_name = f"{owner}/{repo}"
+        
+        if not is_repo_allowed(repo_name):
+            raise HTTPException(status_code=403, detail=f"Repository {repo_name} is not in ALLOWED_REPOS")
+
         result = pr_agent.analyze_pr_summary(repo_name, pr_number)
         
         return JSONResponse(result)
