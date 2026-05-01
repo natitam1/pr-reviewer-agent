@@ -3,7 +3,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 import logging
-
+import time
 from ..tools.github_tools import GitHubTools, GetPRDetailsTool, PostReviewTool
 from ..tools.gitlab_tools import GitLabTools, GetMRDetailsTool, PostMRNoteTool
 from ..utils.config import settings
@@ -112,7 +112,20 @@ class PRReviewerAgent:
                 The commit SHA for posting the review is: {commit_sha}
                 """
             
-            result = self.agent.invoke({"messages": [HumanMessage(content=review_request)]})
+            max_retries = 5
+            base_delay = 30
+            for attempt in range(max_retries):
+                try:
+                    result = self.agent.invoke({"messages": [HumanMessage(content=review_request)]})
+                    break
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if ("429" in error_str or "resource_exhausted" in error_str) and attempt < max_retries - 1:
+                        delay = base_delay * (attempt + 1)
+                        logger.warning(f"Rate limit hit during review. Sleeping for {delay} seconds before retry {attempt + 1}/{max_retries}...")
+                        time.sleep(delay)
+                    else:
+                        raise e
             
             logger.info(f"Review completed for {action_type} #{pr_or_mr_number}")
             return {
@@ -155,8 +168,20 @@ class PRReviewerAgent:
             Keep response under 100 words.
             """
             
-            response = self.llm.invoke([HumanMessage(content=analysis_prompt)],
-                                            max_tokens=150)
+            max_retries = 5
+            base_delay = 30
+            for attempt in range(max_retries):
+                try:
+                    response = self.llm.invoke([HumanMessage(content=analysis_prompt)], max_output_tokens=150)
+                    break
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if ("429" in error_str or "resource_exhausted" in error_str) and attempt < max_retries - 1:
+                        delay = base_delay * (attempt + 1)
+                        logger.warning(f"Rate limit hit during analysis. Sleeping for {delay} seconds before retry {attempt + 1}/{max_retries}...")
+                        time.sleep(delay)
+                    else:
+                        raise e
             
             return {
                 "success": True,
