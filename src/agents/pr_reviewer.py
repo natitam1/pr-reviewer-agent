@@ -1,9 +1,7 @@
 from typing import List, Dict, Any
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.memory import ConversationBufferMemory
-from langchain.schema import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 import logging
 
 from ..tools.github_tools import GitHubTools, GetPRDetailsTool, PostReviewTool
@@ -21,7 +19,6 @@ class PRReviewerAgent:
         )
         
         self.platform = settings.platform.lower()
-        self.memory = ConversationBufferMemory(return_messages=True)
         
         if self.platform == "gitlab":
             self.platform_tools = GitLabTools(settings.gitlab_token, settings.gitlab_url)
@@ -41,7 +38,7 @@ class PRReviewerAgent:
             self.review_type = "Pull Request"        
         self.agent = self._create_agent()
     
-    def _create_agent(self) -> AgentExecutor:
+    def _create_agent(self):
         platform_name = "GitLab" if self.platform == "gitlab" else "GitHub"
         action_name = "Merge Request" if self.platform == "gitlab" else "Pull Request"
         
@@ -76,25 +73,15 @@ class PRReviewerAgent:
 
         Remember: Your goal is to help developers improve while maintaining team velocity."""
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}")
-        ])
+        system_message = SystemMessage(content=system_prompt)
         
-        agent = create_tool_calling_agent(
-            llm=self.llm,
+        agent = create_react_agent(
+            model=self.llm,
             tools=self.tools,
-            prompt=prompt
+            prompt=system_message
         )
         
-        return AgentExecutor(
-            agent=agent,
-            tools=self.tools,
-            memory=self.memory,
-            verbose=True,
-            max_iterations=5
-        )
+        return agent
     
     def review_pr(self, repo_or_project_id: str, pr_or_mr_number: int, commit_sha: str = None) -> Dict[str, Any]:
         try:
@@ -125,7 +112,7 @@ class PRReviewerAgent:
                 The commit SHA for posting the review is: {commit_sha}
                 """
             
-            result = self.agent.invoke({"input": review_request})
+            result = self.agent.invoke({"messages": [HumanMessage(content=review_request)]})
             
             logger.info(f"Review completed for {action_type} #{pr_or_mr_number}")
             return {

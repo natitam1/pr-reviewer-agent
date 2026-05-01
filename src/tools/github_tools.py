@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from github import Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import Field
 import logging
 

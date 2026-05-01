@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 
 class GitLabTools:
     def __init__(self, token: str, url: str):

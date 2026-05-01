@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     github_token: Optional[str] = Field(default=None, env="GITHUB_TOKEN")
     github_webhook_secret: Optional[str] = Field(default=None, env="GITHUB_WEBHOOK_SECRET")
 
+    gitlab_token: Optional[str] = Field(default=None, env="GITLAB_TOKEN")
+    gitlab_url: str = Field(default="https://gitlab.com", env="GITLAB_URL")
+    gitlab_webhook_secret: Optional[str] = Field(default=None, env="GITLAB_WEBHOOK_SECRET")
+
     agent_name: str = Field(default="PR-Reviewer-Bot", env="AGENT_NAME")
     max_files_to_review: int = Field(default=10, env="MAX_FILES_TO_REVIEW")
     max_diff_lines: int = Field(default=500, env="MAX_DIFF_LINES")
