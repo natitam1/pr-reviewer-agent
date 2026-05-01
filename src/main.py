@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import hmac
 import hashlib
 import json
@@ -15,6 +16,14 @@ app = FastAPI(
     title="PR Reviewer Agent",
     description="AI-powered Pull Request reviewer using LangChain and Google Gemini",
     version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 pr_agent = PRReviewerAgent()
