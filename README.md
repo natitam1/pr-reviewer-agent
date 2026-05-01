@@ -113,6 +113,32 @@ pr-reviewer-agent/
 |-- requirements.txt
 ```
 
+## Deployment
+
+This application is built with FastAPI and can be easily deployed to any platform that supports Docker or Python web applications (e.g., Render, Railway, AWS Cloud Run, Heroku).
+
+### Using Docker (Recommended)
+
+A `Dockerfile` is included in the root of the project. To deploy using Docker:
+
+1. Build the image:
+```bash
+docker build -t pr-reviewer-agent .
+```
+
+2. Run the container (ensure you pass your environment variables):
+```bash
+docker run -d -p 8000:8000 --env-file .env pr-reviewer-agent
+```
+
+### Platform-Specific Deployment (Render, Railway, etc.)
+
+1. Connect your GitHub repository to the hosting platform.
+2. Set the build command: `pip install -r requirements.txt`
+3. Set the start command: `uvicorn src.main:app --host 0.0.0.0 --port $PORT`
+4. Copy all variables from your `.env` file into the platform's Environment Variables settings.
+5. Once deployed, update your GitHub/GitLab Webhook URL to point to your new live domain (e.g., `https://your-app.onrender.com/webhook/github`).
+
 ## Contributing
 
 Contributions are welcome. Please ensure that you follow the existing code style and include tests for any new features.
