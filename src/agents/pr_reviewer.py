@@ -134,27 +134,42 @@ class PRReviewerAgent:
                 details = self.platform_tools.get_mr_details(repo_or_project_id, pr_or_mr_number)
                 files_changed = details.get('changes_count', 0)
                 title = details.get('title', 'Unknown')
+                body = details.get('description', '')
+                files = details.get('changes', [])
+                files_list = "\n".join([f"- {f.get('new_path', '')}" for f in files])
+                patches = "\n".join([f"--- {f.get('new_path', '')}\n{f.get('diff', '')}" for f in files])[:3000]
             else:
                 details = self.platform_tools.get_pr_details(repo_or_project_id, pr_or_mr_number)
                 files_changed = details.get('changed_files', 0)
                 title = details.get('title', 'Unknown')
+                body = details.get('body', '')
+                files = details.get('files', [])
+                files_list = "\n".join([f"- {f.get('filename', '')} ({f.get('status', '')})" for f in files])
+                patches = "\n".join([f"--- {f.get('filename', '')}\n{f.get('patch', '')}" for f in files if f.get('patch')])[:4000]
                 
             analysis_prompt = f"""
-            Analyze this {self.review_type} briefly:
+            Perform an in-depth code review analysis of this {self.review_type}:
 
-            Title: {title}
-            Files Changed: {files_changed}
+            **Title**: {title}
+            **Description**: {body}
+            
+            **Files Changed ({files_changed})**:
+            {files_list}
 
-            Provide a concise summary:
-            1. **Risk Level**: Low/Medium/High
-            2. **Key Focus**: Main areas to review
-            3. **Review Time**: Estimated minutes
-            4. **Priority**: Any urgent concerns
+            **Code Diffs**:
+            {patches}
 
-            Keep response under 100 words.
+            Based on the provided information and code diffs, provide a highly detailed, professional, and technical AI analysis of this PR.
+            Format your response in Markdown with the following sections:
+            1. **Executive Summary**: A concise summary of the PR's purpose.
+            2. **Code Quality & Architecture**: Review the architecture, patterns used, and overall code quality.
+            3. **Potential Risks & Issues**: Identify any security vulnerabilities, edge cases, or bugs.
+            4. **Constructive Feedback**: Specific suggestions to improve the code before merging.
+
+            Be thorough, technical, and insightful. Avoid generic filler.
             """
             
-            response = self.llm.invoke([HumanMessage(content=analysis_prompt)], max_output_tokens=150)
+            response = self.llm.invoke([HumanMessage(content=analysis_prompt)])
             
             return {
                 "success": True,
